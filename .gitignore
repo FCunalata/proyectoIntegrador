@@ -1,0 +1,23 @@
+# Maven
+target/
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Claude Code local config
+.claude/
+
+# Node (frontend tooling)
+node_modules/
+package-lock.json
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
+.DS_Store

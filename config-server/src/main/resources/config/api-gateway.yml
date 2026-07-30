@@ -1,0 +1,37 @@
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:5500"
+              - "http://127.0.0.1:5500"
+              - "http://localhost:3000"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+      routes:
+        - id: auth-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/auth/**
+        - id: auth-service-admin
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/admin/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, gateway

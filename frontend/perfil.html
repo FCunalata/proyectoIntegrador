@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mi perfil · Loggin Platform</title>
+  <meta name="description" content="Perfil del usuario autenticado y sus roles" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#contenido-principal">Saltar al contenido principal</a>
+
+  <div class="app-shell">
+    <header class="navbar">
+      <nav class="navbar__inner" aria-label="Navegación principal">
+        <a class="navbar__brand" href="index.html">
+          <span class="navbar__brand-icon" aria-hidden="true">L</span>
+          Loggin Platform
+        </a>
+        <ul class="navbar__links">
+          <li><a href="index.html">Inicio</a></li>
+          <li><a href="perfil.html" aria-current="page">Mi perfil</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="contenido-principal" class="main-content">
+      <div class="container">
+        <section class="card" aria-labelledby="perfil-title">
+          <div class="card__header">
+            <h1 id="perfil-title" class="card__title">Mi perfil</h1>
+            <p class="card__subtitle">Datos de la cuenta y roles asignados</p>
+          </div>
+
+          <div id="perfil-contenido" class="stack">
+            <p>Cargando...</p>
+          </div>
+
+          <button class="btn btn-secondary" type="button" id="logout-btn">
+            <span class="btn-label">Cerrar sesión</span>
+          </button>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script>
+    const token = sessionStorage.getItem("token");
+
+    if (!token) {
+      window.location.href = "login.html";
+    } else {
+      cargarPerfil();
+    }
+
+    async function cargarPerfil() {
+      const contenido = document.getElementById("perfil-contenido");
+      try {
+        const perfil = await apiRequest("/auth/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const badges = perfil.roles
+          .map((rol) => `<span class="badge">${escapeHtml(rol)}</span>`)
+          .join(" ");
+
+        contenido.innerHTML = `
+          <p><strong>Usuario:</strong> ${escapeHtml(perfil.nombreUsuario)}</p>
+          <p><strong>Correo:</strong> ${escapeHtml(perfil.email)}</p>
+          <p><strong>Roles:</strong> ${badges || "Sin roles asignados"}</p>
+        `;
+
+        if (perfil.roles.includes("ADMIN")) {
+          const navLinks = document.querySelector(".navbar__links");
+          const li = document.createElement("li");
+          li.innerHTML = `<a href="admin-roles.html">Administrar roles</a>`;
+          navLinks.appendChild(li);
+        }
+      } catch (err) {
+        showToast(err.message, "error");
+        if (err.status === 401 || err.status === 403) {
+          sessionStorage.removeItem("token");
+          window.location.href = "login.html";
+        }
+      }
+    }
+
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("nombreUsuario");
+      window.location.href = "login.html";
+    });
+  </script>
+</body>
+</html>

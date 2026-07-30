@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Administrar roles · Loggin Platform</title>
+  <meta name="description" content="Crear roles y asignarlos a usuarios" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#contenido-principal">Saltar al contenido principal</a>
+
+  <div class="app-shell">
+    <header class="navbar">
+      <nav class="navbar__inner" aria-label="Navegación principal">
+        <a class="navbar__brand" href="index.html">
+          <span class="navbar__brand-icon" aria-hidden="true">L</span>
+          Loggin Platform
+        </a>
+        <ul class="navbar__links">
+          <li><a href="index.html">Inicio</a></li>
+          <li><a href="perfil.html">Mi perfil</a></li>
+          <li><a href="admin-roles.html" aria-current="page">Administrar roles</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="contenido-principal" class="main-content">
+      <div class="container">
+        <section class="card" aria-labelledby="crear-rol-title">
+          <div class="card__header">
+            <h2 id="crear-rol-title" class="card__title">Crear rol</h2>
+          </div>
+
+          <form id="crear-rol-form" novalidate>
+            <div class="form-field">
+              <label class="form-label" for="rol-nombre">
+                Nombre del rol <span class="required" aria-hidden="true">*</span>
+              </label>
+              <input class="form-input" type="text" id="rol-nombre" name="rol-nombre" required />
+              <p class="form-error" id="rol-nombre-error" role="alert"></p>
+            </div>
+
+            <div class="form-field">
+              <label class="form-label" for="rol-descripcion">Descripción</label>
+              <input class="form-input" type="text" id="rol-descripcion" name="rol-descripcion" />
+            </div>
+
+            <button class="btn btn-primary" type="submit" id="crear-rol-submit">
+              <span class="btn-label">Crear rol</span>
+              <span class="spinner" aria-hidden="true"></span>
+            </button>
+          </form>
+        </section>
+
+        <section class="card" aria-labelledby="usuarios-title">
+          <div class="card__header">
+            <h2 id="usuarios-title" class="card__title">Usuarios y sus roles</h2>
+          </div>
+
+          <div id="usuarios-contenido" class="stack">
+            <p>Cargando...</p>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script>
+    const token = sessionStorage.getItem("token");
+    let rolesDisponibles = [];
+
+    if (!token) {
+      window.location.href = "login.html";
+    } else {
+      verificarAcceso();
+    }
+
+    async function verificarAcceso() {
+      try {
+        const perfil = await apiRequest("/auth/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!perfil.roles.includes("ADMIN")) {
+          showToast("No tienes permisos de administrador.", "error");
+          window.location.href = "perfil.html";
+          return;
+        }
+        await cargarRoles();
+        await cargarUsuarios();
+      } catch (err) {
+        showToast(err.message, "error");
+        window.location.href = "login.html";
+      }
+    }
+
+    async function cargarRoles() {
+      rolesDisponibles = await apiRequest("/admin/roles", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+
+    async function cargarUsuarios() {
+      const contenido = document.getElementById("usuarios-contenido");
+      const usuarios = await apiRequest("/admin/usuarios", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      contenido.innerHTML = usuarios.map((usuario) => renderUsuario(usuario)).join("");
+
+      usuarios.forEach((usuario) => {
+        const form = document.getElementById(`asignar-form-${usuario.id}`);
+        form.addEventListener("submit", (event) => manejarAsignar(event, usuario.id));
+
+        const select = form.querySelector("select[name='rol']");
+        const preview = document.getElementById(`preview-${usuario.id}`);
+        select.addEventListener("change", () => {
+          preview.textContent = textoPreview(select.value, usuario.roles);
+        });
+
+        usuario.roles.forEach((rol) => {
+          const btn = document.getElementById(`quitar-${usuario.id}-${rol}`);
+          if (btn) btn.addEventListener("click", () => manejarQuitar(usuario.id, rol));
+        });
+      });
+    }
+
+    function textoPreview(rolSeleccionado, rolesActuales) {
+      if (rolesActuales.includes(rolSeleccionado)) {
+        return `El usuario ya tiene el rol ${rolSeleccionado}.`;
+      }
+      return `Se guardará al presionar el botón: ${rolSeleccionado}`;
+    }
+
+    function renderUsuario(usuario) {
+      const badges = usuario.roles
+        .map(
+          (rol) => `
+            <span class="badge">
+              ${escapeHtml(rol)}
+              <button type="button" id="quitar-${usuario.id}-${escapeHtml(rol)}" class="badge-remove" aria-label="Quitar rol ${escapeHtml(rol)}">×</button>
+            </span>`
+        )
+        .join(" ");
+
+      const opciones = rolesDisponibles
+        .map((rol) => `<option value="${escapeHtml(rol.nombre)}">${escapeHtml(rol.nombre)}</option>`)
+        .join("");
+
+      const tieneRoles = usuario.roles.length > 0;
+      const etiquetaBoton = tieneRoles ? "Cambiar rol" : "Asignar rol";
+      const primeraOpcion = rolesDisponibles[0]?.nombre;
+
+      return `
+        <div class="usuario-row">
+          <p><strong>${escapeHtml(usuario.nombreUsuario)}</strong> (${escapeHtml(usuario.email)})</p>
+          <p>${badges || "Sin roles asignados"}</p>
+          <form id="asignar-form-${usuario.id}" class="asignar-form" data-roles-actuales="${escapeHtml(usuario.roles.join(","))}">
+            <select class="form-input" name="rol">${opciones}</select>
+            <button class="btn btn-secondary" type="submit">${etiquetaBoton}</button>
+          </form>
+          <p class="form-hint" id="preview-${usuario.id}">${escapeHtml(textoPreview(primeraOpcion, usuario.roles))}</p>
+        </div>
+        <hr />
+      `;
+    }
+
+    function manejarErrorSesion(err) {
+      showToast(err.message, "error");
+      if (err.status === 401) {
+        sessionStorage.removeItem("token");
+        sessionStorage.removeItem("nombreUsuario");
+      }
+    }
+
+    async function manejarAsignar(event, usuarioId) {
+      event.preventDefault();
+      const form = event.target;
+      const select = form.querySelector("select[name='rol']");
+      const rolNuevo = select.value;
+      const rolesActuales = form.dataset.rolesActuales
+        ? form.dataset.rolesActuales.split(",").filter(Boolean)
+        : [];
+
+      if (rolesActuales.includes(rolNuevo)) {
+        showToast(`El usuario ya tiene el rol ${rolNuevo}.`, "info");
+        return;
+      }
+
+      try {
+        for (const rolAnterior of rolesActuales) {
+          await apiRequest(`/admin/usuarios/${usuarioId}/roles/${rolAnterior}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+
+        await apiRequest(`/admin/usuarios/${usuarioId}/roles`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ nombreRol: rolNuevo }),
+        });
+
+        showToast(`Rol ${rolNuevo} asignado correctamente.`, "success");
+        await cargarUsuarios();
+      } catch (err) {
+        manejarErrorSesion(err);
+        await cargarUsuarios();
+      }
+    }
+
+    async function manejarQuitar(usuarioId, nombreRol) {
+      try {
+        await apiRequest(`/admin/usuarios/${usuarioId}/roles/${nombreRol}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        showToast(`Rol ${nombreRol} eliminado correctamente.`, "success");
+        await cargarUsuarios();
+      } catch (err) {
+        manejarErrorSesion(err);
+      }
+    }
+
+    const crearRolForm = document.getElementById("crear-rol-form");
+    const crearRolSubmit = document.getElementById("crear-rol-submit");
+
+    const { validarTodo } = attachRealtimeValidation(crearRolForm, {
+      "rol-nombre": [VALIDADORES.required],
+    });
+
+    crearRolForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!validarTodo()) {
+        showToast("Revisa los campos marcados en rojo.", "error");
+        return;
+      }
+
+      setButtonLoading(crearRolSubmit, true);
+      try {
+        await apiRequest("/admin/roles", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            nombre: document.getElementById("rol-nombre").value.trim(),
+            descripcion: document.getElementById("rol-descripcion").value.trim(),
+          }),
+        });
+        showToast("Rol creado correctamente.", "success");
+        crearRolForm.reset();
+        await cargarRoles();
+        await cargarUsuarios();
+      } catch (err) {
+        aplicarErroresBackend(err.errores);
+        manejarErrorSesion(err);
+      } finally {
+        setButtonLoading(crearRolSubmit, false);
+      }
+    });
+  </script>
+</body>
+</html>
